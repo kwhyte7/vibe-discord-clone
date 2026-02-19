@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - Discord-like App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body class="chat-page">
+    <div class="chat-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-comments"></i> ChatApp</h2>
+                <div class="user-info">
+                    <span class="username">{{ username }}</span>
+                    <a href="{{ url_for('logout') }}" class="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="rooms-section">
+                <h3><i class="fas fa-hashtag"></i> Rooms</h3>
+                <ul class="rooms-list" id="rooms-list">
+                    {% for room in rooms %}
+                    <li class="room-item {% if loop.first %}active{% endif %}" 
+                        data-room="{{ room }}" onclick="joinRoom('{{ room }}')">
+                        <i class="fas fa-hashtag"></i> {{ room }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                
+                <div class="create-room">
+                    <input type="text" id="new-room" placeholder="Create new room...">
+                    <button onclick="createRoom()">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="online-users">
+                <h3><i class="fas fa-users"></i> Online Users</h3>
+                <ul class="users-list" id="users-list">
+                    <!-- Online users will be added dynamically -->
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Main Chat Area -->
+        <div class="main-chat">
+            <div class="chat-header">
+                <div class="current-room">
+                    <h2 id="current-room-name">#general</h2>
+                    <span class="room-topic" id="room-topic">General discussion</span>
+                </div>
+                <div class="room-actions">
+                    <button class="btn btn-icon" title="Invite users">
+                        <i class="fas fa-user-plus"></i>
+                    </button>
+                    <button class="btn btn-icon" title="Room settings">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="messages-container" id="messages-container">
+                <!-- Messages will be loaded here -->
+                {% for message in messages|reverse %}
+                <div class="message" data-message-id="{{ message.id }}">
+                    <div class="message-header">
+                        <span class="message-user">{{ message.username }}</span>
+                        <span class="message-time">{{ message.timestamp }}</span>
+                    </div>
+                    <div class="message-content">{{ message.content }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="message-input-container">
+                <form id="message-form">
+                    <input type="text" id="message-input" 
+                           placeholder="Type your message here..." 
+                           autocomplete="off" required>
+                    <button type="submit" class="btn btn-primary send-btn">
+                        <i class="fas fa-paper-plane"></i> Send
+                    </button>
+                </form>
+                <div class="input-actions">
+                    <button class="btn btn-icon" title="Attach file">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    <button class="btn btn-icon" title="Emoji">
+                        <i class="fas fa-smile"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentRoom = 'general';
+        
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            joinRoom(currentRoom);
+        });
+        
+        socket.on('new_message', function(data) {
+            if (data.room === currentRoom) {
+                addMessage(data);
+            }
+        });
+        
+        socket.on('room_history', function(data) {
+            if (data.room === currentRoom) {
+                document.getElementById('messages-container').innerHTML = '';
+                data.messages.reverse().forEach(addMessage);
+                scrollToBottom();
+            }
+        });
+        
+        socket.on('system_message', function(data) {
+            if (data.room === currentRoom) {
+                addSystemMessage(data.message);
+            }
+        });
+        
+        socket.on('user_status', function(data) {
+            updateUserStatus(data.username, data.status);
+        });
+        
+        function joinRoom(room) {
+            if (currentRoom === room) return;
+            
+            socket.emit('leave_room', {room: currentRoom});
+            currentRoom = room;
+            socket.emit('join_room', {room: room});
+            
+            // Update UI
+            document.getElementById('current-room-name').textContent = '#' + room;
+            
+            // Update active room in sidebar
+            document.querySelectorAll('.room-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.room === room) {
+                    item.classList.add('active');
+                }
+            });
+            
+            // Fetch room messages via API
+            fetch(`/api/messages/${room}`)
+                .then(response => response.json())
+                .then(messages => {
+                    const container = document.getElementById('messages-container');
+                    container.innerHTML = '';
+                    messages.reverse().forEach(addMessage);
+                    scrollToBottom();
+                });
+        }
+        
+        function createRoom() {
+            const roomInput = document.getElementById('new-room');
+            const roomName = roomInput.value.trim();
+            
+            if (roomName) {
+                // Add to rooms list
+                const roomsList = document.getElementById('rooms-list');
+                const roomItem = document.createElement('li');
+                roomItem.className = 'room-item';
+                roomItem.dataset.room = roomName;
+                roomItem.innerHTML = `<i class="fas fa-hashtag"></i> ${roomName}`;
+                roomItem.onclick = () => joinRoom(roomName);
+                roomsList.appendChild(roomItem);
+                
+                roomInput.value = '';
+                joinRoom(roomName);
+            }
+        }
+        
+        document.getElementById('message-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (message) {
+                socket.emit('send_message', {
+                    room: currentRoom,
+                    content: message
+                });
+                input.value = '';
+            }
+        });
+        
+        function addMessage(data) {
+            const container = document.getElementById('messages-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.dataset.messageId = data.id;
+            
+            const time = new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-user">${data.username}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-content">${escapeHtml(data.content)}</div>
+            `;
+            
+            container.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        function addSystemMessage(message) {
+            const container = document.getElementById('messages-container');
+            const systemDiv = document.createElement('div');
+            systemDiv.className = 'system-message';
+            systemDiv.innerHTML = `<span>${escapeHtml(message)}</span>`;
+            container.appendChild(systemDiv);
+            scrollToBottom();
+        }
+        
+        function updateUserStatus(username, status) {
+            const usersList = document.getElementById('users-list');
+            let userItem = Array.from(usersList.children).find(
+                item => item.dataset.username === username
+            );
+            
+            if (!userItem) {
+                userItem = document.createElement('li');
+                userItem.dataset.username = username;
+                userItem.innerHTML = `
+                    <i class="fas fa-circle status-${status}"></i>
+                    <span>${username}</span>
+                `;
+                usersList.appendChild(userItem);
+            } else {
+                const statusIcon = userItem.querySelector('i');
+                statusIcon.className = `fas fa-circle status-${status}`;
+            }
+        }
+        
+        function scrollToBottom() {
+            const container = document.getElementById('messages-container');
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Initialize with general room
+        window.onload = function() {
+            joinRoom('general');
+        };
+    </script>
+</body>
+</html>
