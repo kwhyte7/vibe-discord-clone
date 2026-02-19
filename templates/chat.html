@@ -8,6 +8,129 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        /* Emoji Picker Styles */
+        .emoji-picker {
+            position: absolute;
+            bottom: 60px;
+            right: 60px;
+            width: 300px;
+            height: 250px;
+            background: #2f3136;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            display: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .emoji-picker-header {
+            padding: 12px;
+            border-bottom: 1px solid #40444b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .emoji-picker-header h4 {
+            margin: 0;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .emoji-categories {
+            display: flex;
+            gap: 8px;
+            padding: 8px;
+            background: #202225;
+            border-bottom: 1px solid #40444b;
+        }
+
+        .emoji-category-btn {
+            background: transparent;
+            border: none;
+            color: #b9bbbe;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .emoji-category-btn:hover,
+        .emoji-category-btn.active {
+            background: #40444b;
+            color: #fff;
+        }
+
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            padding: 8px;
+            height: 170px;
+            overflow-y: auto;
+        }
+
+        .emoji-btn {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 20px;
+            padding: 4px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .emoji-btn:hover {
+            background: #40444b;
+        }
+
+        .emoji-search {
+            padding: 8px;
+            border-top: 1px solid #40444b;
+        }
+
+        .emoji-search input {
+            width: 100%;
+            padding: 6px 8px;
+            background: #202225;
+            border: 1px solid #40444b;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        /* Room item delete button */
+        .room-item {
+            position: relative;
+            padding-right: 40px !important;
+        }
+
+        .delete-room-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #72767d;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.2s, background 0.2s;
+        }
+
+        .room-item:hover .delete-room-btn {
+            opacity: 1;
+        }
+
+        .delete-room-btn:hover {
+            background: #ed4245;
+            color: #fff;
+        }
+    </style>
 </head>
 <body class="chat-page">
     <div class="chat-container">
@@ -30,6 +153,11 @@
                     <li class="room-item {% if loop.first %}active{% endif %}" 
                         data-room="{{ room }}" onclick="joinRoom('{{ room }}')">
                         <i class="fas fa-hashtag"></i> {{ room }}
+                        {% if room not in ['general', 'random', 'help'] %}
+                        <button class="delete-room-btn" onclick="deleteRoom('{{ room }}', event)">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                        {% endif %}
                     </li>
                     {% endfor %}
                 </ul>
@@ -119,11 +247,30 @@
                     <button class="btn btn-icon" title="Attach file" onclick="document.getElementById('file-input').click()">
                         <i class="fas fa-paperclip"></i>
                     </button>
-                    <button class="btn btn-icon" title="Emoji">
+                    <button class="btn btn-icon" title="Emoji" id="emoji-btn">
                         <i class="fas fa-smile"></i>
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Emoji Picker -->
+    <div class="emoji-picker" id="emoji-picker">
+        <div class="emoji-picker-header">
+            <h4>Emoji Picker</h4>
+            <button onclick="closeEmojiPicker()" style="background:transparent;border:none;color:#fff;cursor:pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="emoji-categories" id="emoji-categories">
+            <!-- Categories will be added dynamically -->
+        </div>
+        <div class="emoji-grid" id="emoji-grid">
+            <!-- Emojis will be added dynamically -->
+        </div>
+        <div class="emoji-search">
+            <input type="text" id="emoji-search" placeholder="Search emojis..." oninput="searchEmojis(this.value)">
         </div>
     </div>
 
@@ -140,10 +287,25 @@
         let lastMessageTime = null;
         const GROUP_TIME_WINDOW = 5 * 60 * 1000; // 5 minutes in milliseconds
         
+        // Emoji data
+        const emojiCategories = {
+            'smileys': ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳'],
+            'people': ['👋', '🤚', '🖐', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🙏'],
+            'animals': ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗'],
+            'food': ['🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔'],
+            'activities': ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷'],
+            'objects': ['💎', '🔪', '🧨', '🪓', '⛏️', '🛠️', '🗡️', '⚔️', '🔫', '🏹', '🛡️', '🔧', '🔩', '⚙️', '🗜️', '⚖️', '🔗', '⛓️', '🧰', '🧲', '🪛', '🔦', '🕯️', '🔌', '🔋', '🪫', '💡', '🔦', '🕯️', '🪔'],
+            'symbols': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️'],
+            'flags': ['🏳️', '🏴', '🏁', '🚩', '🏳️‍🌈', '🏳️‍⚧️', '🇺🇳', '🇦🇫', '🇦🇽', '🇦🇱', '🇩🇿', '🇦🇸', '🇦🇩', '🇦🇴', '🇦🇮', '🇦🇶', '🇦🇬', '🇦🇷', '🇦🇲', '🇦🇼', '🇦🇺', '🇦🇹', '🇦🇿', '🇧🇸', '🇧🇭', '🇧🇩', '🇧🇧', '🇧🇾', '🇧🇪', '🇧🇿']
+        };
+
+        let isEmojiPickerOpen = false;
+
         socket.on('connect', function() {
             console.log('Connected to server');
             joinRoom(currentRoom);
             groupExistingMessages();
+            initEmojiPicker();
         });
         
         socket.on('new_message', function(data) {
@@ -169,6 +331,24 @@
         
         socket.on('user_status', function(data) {
             updateUserStatus(data.username, data.status);
+        });
+
+        socket.on('room_deleted', function(data) {
+            const roomName = data.room;
+            
+            // If we're in the deleted room, switch to general
+            if (currentRoom === roomName) {
+                joinRoom('general');
+                addSystemMessage(`Room #${roomName} was deleted. Switched to #general.`);
+            }
+            
+            // Remove the room from the sidebar
+            const roomItems = document.querySelectorAll('.room-item');
+            roomItems.forEach(item => {
+                if (item.dataset.room === roomName) {
+                    item.remove();
+                }
+            });
         });
         
         // File upload handling
@@ -258,18 +438,78 @@
             const roomName = roomInput.value.trim();
             
             if (roomName) {
+                // Check if room already exists
+                const existingRooms = Array.from(document.querySelectorAll('.room-item')).map(item => item.dataset.room);
+                if (existingRooms.includes(roomName)) {
+                    alert(`Room #${roomName} already exists!`);
+                    return;
+                }
+                
                 // Add to rooms list
                 const roomsList = document.getElementById('rooms-list');
                 const roomItem = document.createElement('li');
                 roomItem.className = 'room-item';
                 roomItem.dataset.room = roomName;
-                roomItem.innerHTML = `<i class="fas fa-hashtag"></i> ${roomName}`;
+                roomItem.innerHTML = `
+                    <i class="fas fa-hashtag"></i> ${roomName}
+                    <button class="delete-room-btn" onclick="deleteRoom('${roomName}', event)">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                `;
                 roomItem.onclick = () => joinRoom(roomName);
                 roomsList.appendChild(roomItem);
+                
+                // Create system message in the new room
+                socket.emit('send_message', {
+                    room: roomName,
+                    content: `Welcome to #${roomName}!`
+                });
                 
                 roomInput.value = '';
                 joinRoom(roomName);
             }
+        }
+
+        function deleteRoom(roomName, event) {
+            if (event) event.stopPropagation();
+            
+            if (roomName === 'general' || roomName === 'random' || roomName === 'help') {
+                alert('Cannot delete default rooms!');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete room #${roomName}? This action cannot be undone.`)) {
+                return;
+            }
+            
+            fetch(`/api/room/${roomName}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    // If we're in the deleted room, switch to general
+                    if (currentRoom === roomName) {
+                        joinRoom('general');
+                    }
+                    // Remove the room from the sidebar
+                    const roomItems = document.querySelectorAll('.room-item');
+                    roomItems.forEach(item => {
+                        if (item.dataset.room === roomName) {
+                            item.remove();
+                        }
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting room:', error);
+                alert('Failed to delete room. Please try again.');
+            });
         }
         
         document.getElementById('message-form').addEventListener('submit', function(e) {
@@ -283,8 +523,152 @@
                     content: message
                 });
                 input.value = '';
+                input.focus();
             }
         });
+
+        // Emoji picker functionality
+        function initEmojiPicker() {
+            const emojiBtn = document.getElementById('emoji-btn');
+            const emojiPicker = document.getElementById('emoji-picker');
+            
+            emojiBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleEmojiPicker();
+            });
+            
+            // Close emoji picker when clicking outside
+            document.addEventListener('click', function() {
+                if (isEmojiPickerOpen) {
+                    closeEmojiPicker();
+                }
+            });
+            
+            // Prevent closing when clicking inside the picker
+            emojiPicker.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            
+            // Populate emoji categories
+            const categoriesContainer = document.getElementById('emoji-categories');
+            let firstCategory = null;
+            
+            for (const category in emojiCategories) {
+                if (!firstCategory) firstCategory = category;
+                
+                const button = document.createElement('button');
+                button.className = 'emoji-category-btn';
+                button.textContent = emojiCategories[category][0]; // Use first emoji as icon
+                button.dataset.category = category;
+                button.onclick = () => showEmojiCategory(category);
+                
+                categoriesContainer.appendChild(button);
+            }
+            
+            // Show first category by default
+            if (firstCategory) {
+                showEmojiCategory(firstCategory);
+                const firstBtn = categoriesContainer.querySelector(`[data-category="${firstCategory}"]`);
+                firstBtn.classList.add('active');
+            }
+        }
+        
+        function toggleEmojiPicker() {
+            const emojiPicker = document.getElementById('emoji-picker');
+            if (isEmojiPickerOpen) {
+                closeEmojiPicker();
+            } else {
+                openEmojiPicker();
+            }
+        }
+        
+        function openEmojiPicker() {
+            const emojiPicker = document.getElementById('emoji-picker');
+            emojiPicker.style.display = 'block';
+            isEmojiPickerOpen = true;
+        }
+        
+        function closeEmojiPicker() {
+            const emojiPicker = document.getElementById('emoji-picker');
+            emojiPicker.style.display = 'none';
+            isEmojiPickerOpen = false;
+        }
+        
+        function showEmojiCategory(category) {
+            const emojiGrid = document.getElementById('emoji-grid');
+            const categoryButtons = document.querySelectorAll('.emoji-category-btn');
+            
+            // Update active category button
+            categoryButtons.forEach(btn => {
+                if (btn.dataset.category === category) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Clear and populate emoji grid
+            emojiGrid.innerHTML = '';
+            
+            if (emojiCategories[category]) {
+                emojiCategories[category].forEach(emoji => {
+                    const button = document.createElement('button');
+                    button.className = 'emoji-btn';
+                    button.textContent = emoji;
+                    button.onclick = () => insertEmoji(emoji);
+                    emojiGrid.appendChild(button);
+                });
+            }
+        }
+        
+        function searchEmojis(query) {
+            const emojiGrid = document.getElementById('emoji-grid');
+            emojiGrid.innerHTML = '';
+            
+            if (!query.trim()) {
+                // Show current category if no search
+                const activeBtn = document.querySelector('.emoji-category-btn.active');
+                if (activeBtn) {
+                    showEmojiCategory(activeBtn.dataset.category);
+                }
+                return;
+            }
+            
+            const searchTerm = query.toLowerCase();
+            let foundEmojis = [];
+            
+            // Search through all emojis
+            for (const category in emojiCategories) {
+                emojiCategories[category].forEach(emoji => {
+                    // You could add more sophisticated search here
+                    // For now, just show all emojis when searching
+                    foundEmojis.push(emoji);
+                });
+            }
+            
+            // Display found emojis
+            foundEmojis.slice(0, 64).forEach(emoji => { // Limit to 64 emojis for performance
+                const button = document.createElement('button');
+                button.className = 'emoji-btn';
+                button.textContent = emoji;
+                button.onclick = () => insertEmoji(emoji);
+                emojiGrid.appendChild(button);
+            });
+        }
+        
+        function insertEmoji(emoji) {
+            const input = document.getElementById('message-input');
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            const text = input.value;
+            
+            input.value = text.substring(0, start) + emoji + text.substring(end);
+            input.focus();
+            input.selectionStart = input.selectionEnd = start + emoji.length;
+            
+            // Close the emoji picker after inserting
+            closeEmojiPicker();
+        }
         
         function addMessage(data) {
             const container = document.getElementById('messages-container');

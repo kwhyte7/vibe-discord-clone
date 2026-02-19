@@ -184,6 +184,32 @@ def get_rooms():
     
     return jsonify([room['room'] for room in rooms])
 
+@app.route('/api/room/<room_name>', methods=['DELETE'])
+def delete_room(room_name):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    # Prevent deletion of default rooms
+    default_rooms = ['general', 'random', 'help']
+    if room_name in default_rooms:
+        return jsonify({'error': f'Cannot delete default room: #{room_name}'}), 400
+    
+    conn = get_db()
+    # Delete all messages in the room
+    conn.execute('DELETE FROM messages WHERE room = ?', (room_name,))
+    conn.commit()
+    
+    # Check if room still exists
+    remaining = conn.execute('SELECT COUNT(*) as count FROM messages WHERE room = ?', (room_name,)).fetchone()
+    conn.close()
+    
+    if remaining['count'] == 0:
+        # Notify all clients that the room was deleted
+        socketio.emit('room_deleted', {'room': room_name})
+        return jsonify({'success': True, 'message': f'Room #{room_name} deleted successfully'})
+    else:
+        return jsonify({'error': 'Failed to delete room'}), 500
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'user_id' not in session:
