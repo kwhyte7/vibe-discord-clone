@@ -244,4 +244,4 @@ def handle_send_message(data):
 if __name__ == '__main__':
     if not os.path.exists('chat.db'):
         init_db()
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5001)
