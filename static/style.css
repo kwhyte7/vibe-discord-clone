@@ -408,12 +408,117 @@ body {
     font-size: 15px;
 }
 
+/* File message styles */
+.file-message {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.file-name {
+    font-weight: 500;
+    color: #2d3748;
+    margin-bottom: 4px;
+}
+
+.uploaded-image {
+    max-width: 300px;
+    max-height: 300px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s;
+    border: 1px solid #e2e8f0;
+}
+
+.uploaded-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.file-link {
+    color: #667eea;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: #edf2f7;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.file-link:hover {
+    background: #e2e8f0;
+    color: #5a67d8;
+    text-decoration: underline;
+}
+
+.file-link i {
+    font-size: 14px;
+}
+
+.file-size {
+    color: #a0aec0;
+    font-size: 12px;
+    margin-left: 8px;
+}
+
+.text-content {
+    word-break: break-word;
+}
+
 .system-message {
     text-align: center;
     color: #94a3b8;
     font-size: 14px;
     padding: 8px;
     font-style: italic;
+}
+
+/* Image Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    margin: auto;
+    display: block;
+    max-width: 90%;
+    max-height: 90%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 8px;
+}
+
+.close-modal {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    color: white;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1001;
+    transition: color 0.2s;
+}
+
+.close-modal:hover {
+    color: #ccc;
 }
 
 /* Message Input */
@@ -498,6 +603,11 @@ body {
     .message {
         max-width: 85%;
     }
+    
+    .uploaded-image {
+        max-width: 200px;
+        max-height: 200px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -519,5 +629,10 @@ body {
     
     .message {
         max-width: 95%;
+    }
+    
+    .uploaded-image {
+        max-width: 150px;
+        max-height: 150px;
     }
 }
