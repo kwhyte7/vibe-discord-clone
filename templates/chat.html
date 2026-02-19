@@ -70,7 +70,7 @@
             <div class="messages-container" id="messages-container">
                 <!-- Messages will be loaded here -->
                 {% for message in messages|reverse %}
-                <div class="message" data-message-id="{{ message.id }}">
+                <div class="message" data-message-id="{{ message.id }}" data-username="{{ message.username }}" data-timestamp="{{ message.timestamp }}">
                     <div class="message-header">
                         <span class="message-user">{{ message.username }}</span>
                         <span class="message-time">{{ message.timestamp }}</span>
@@ -136,10 +136,14 @@
     <script>
         const socket = io();
         let currentRoom = 'general';
+        let lastMessageUser = null;
+        let lastMessageTime = null;
+        const GROUP_TIME_WINDOW = 5 * 60 * 1000; // 5 minutes in milliseconds
         
         socket.on('connect', function() {
             console.log('Connected to server');
             joinRoom(currentRoom);
+            groupExistingMessages();
         });
         
         socket.on('new_message', function(data) {
@@ -152,6 +156,7 @@
             if (data.room === currentRoom) {
                 document.getElementById('messages-container').innerHTML = '';
                 data.messages.reverse().forEach(addMessage);
+                groupExistingMessages();
                 scrollToBottom();
             }
         });
@@ -221,6 +226,10 @@
             currentRoom = room;
             socket.emit('join_room', {room: room});
             
+            // Reset grouping state
+            lastMessageUser = null;
+            lastMessageTime = null;
+            
             // Update UI
             document.getElementById('current-room-name').textContent = '#' + room;
             
@@ -239,6 +248,7 @@
                     const container = document.getElementById('messages-container');
                     container.innerHTML = '';
                     messages.reverse().forEach(addMessage);
+                    groupExistingMessages();
                     scrollToBottom();
                 });
         }
@@ -281,8 +291,16 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
             messageDiv.dataset.messageId = data.id;
+            messageDiv.dataset.username = data.username;
+            messageDiv.dataset.timestamp = data.timestamp;
             
-            const time = new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const time = new Date(data.timestamp);
+            const displayTime = time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            // Check if this message should be grouped with the previous one
+            const shouldGroup = lastMessageUser === data.username && 
+                               lastMessageTime && 
+                               (time - lastMessageTime) <= GROUP_TIME_WINDOW;
             
             let contentHtml = '';
             if (data.is_file || data.file_path) {
@@ -321,16 +339,89 @@
                 contentHtml = `<div class="text-content">${escapeHtml(data.content)}</div>`;
             }
             
-            messageDiv.innerHTML = `
-                <div class="message-header">
-                    <span class="message-user">${data.username}</span>
-                    <span class="message-time">${time}</span>
-                </div>
-                <div class="message-content">${contentHtml}</div>
-            `;
+            if (shouldGroup) {
+                messageDiv.classList.add('grouped');
+                messageDiv.innerHTML = `
+                    <div class="message-content grouped-content">${contentHtml}</div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        <span class="message-user">${data.username}</span>
+                        <span class="message-time">${displayTime}</span>
+                    </div>
+                    <div class="message-content">${contentHtml}</div>
+                `;
+            }
             
             container.appendChild(messageDiv);
+            lastMessageUser = data.username;
+            lastMessageTime = time;
             scrollToBottom();
+        }
+        
+        function groupExistingMessages() {
+            const container = document.getElementById('messages-container');
+            const messages = container.querySelectorAll('.message');
+            
+            if (messages.length === 0) {
+                lastMessageUser = null;
+                lastMessageTime = null;
+                return;
+            }
+            
+            let lastUser = null;
+            let lastTime = null;
+            
+            messages.forEach((message, index) => {
+                const username = message.dataset.username;
+                const timestamp = message.dataset.timestamp;
+                const time = new Date(timestamp);
+                
+                // Check if this message should be grouped with the previous one
+                const shouldGroup = lastUser === username && 
+                                   lastTime && 
+                                   (time - lastTime) <= GROUP_TIME_WINDOW;
+                
+                if (shouldGroup) {
+                    message.classList.add('grouped');
+                    // Hide the message header if it exists
+                    const header = message.querySelector('.message-header');
+                    if (header) {
+                        header.style.display = 'none';
+                    }
+                    // Wrap the content in a grouped-content div for consistent styling
+                    const content = message.querySelector('.message-content');
+                    if (content && !content.classList.contains('grouped-content')) {
+                        content.classList.add('grouped-content');
+                    }
+                } else {
+                    message.classList.remove('grouped');
+                    // Show the message header if it exists
+                    const header = message.querySelector('.message-header');
+                    if (header) {
+                        header.style.display = 'flex';
+                    }
+                    // Remove grouped-content class
+                    const content = message.querySelector('.message-content');
+                    if (content && content.classList.contains('grouped-content')) {
+                        content.classList.remove('grouped-content');
+                    }
+                }
+                
+                lastUser = username;
+                lastTime = time;
+            });
+            
+            // Update global tracking variables
+            if (messages.length > 0) {
+                const lastMessage = messages[messages.length - 1];
+                lastMessageUser = lastMessage.dataset.username;
+                lastMessageTime = new Date(lastMessage.dataset.timestamp);
+            } else {
+                lastMessageUser = null;
+                lastMessageTime = null;
+            }
         }
         
         function addSystemMessage(message) {
@@ -397,6 +488,7 @@
         // Initialize with general room
         window.onload = function() {
             joinRoom('general');
+            groupExistingMessages();
         };
     </script>
 </body>
