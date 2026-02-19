@@ -427,7 +427,7 @@
                 .then(messages => {
                     const container = document.getElementById('messages-container');
                     container.innerHTML = '';
-                    messages.reverse().forEach(addMessage);
+                    messages.reverse().forEach(m => addMessage(m, false));
                     groupExistingMessages();
                     scrollToBottom();
                 });
@@ -670,7 +670,7 @@
             closeEmojiPicker();
         }
         
-        function addMessage(data) {
+        function addMessage(data, wantToGroup=true) {
             const container = document.getElementById('messages-container');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
@@ -684,7 +684,9 @@
             // Check if this message should be grouped with the previous one
             const shouldGroup = lastMessageUser === data.username && 
                                lastMessageTime && 
-                               (time - lastMessageTime) <= GROUP_TIME_WINDOW;
+                               (time - lastMessageTime) <= GROUP_TIME_WINDOW &&
+                               wantToGroup;
+            //const shouldGroup = false;
             
             let contentHtml = '';
             if (data.is_file || data.file_path) {
