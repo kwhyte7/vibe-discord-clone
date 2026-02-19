@@ -10,6 +10,8 @@ Running this will handle the server.
 - Real-time messaging using WebSockets
 - Multiple chat rooms
 - Online user status
+- **File upload support** (images, documents, etc.)
+- **Image display in chat with modal viewer**
 - Responsive design
 - SQLite database for data persistence
 
@@ -31,3 +33,12 @@ python3 app.py
 ```
 
 4. You're good!
+
+## File Upload Features
+
+- Upload files up to 16MB
+- Supported file types: PNG, JPG, JPEG, GIF, BMP, WEBP, PDF, TXT, DOC, DOCX, ZIP
+- Images are displayed directly in the chat
+- Non-image files appear as clickable links
+- Click on uploaded images to view them in a modal viewer
+- File sizes are displayed for non-image files

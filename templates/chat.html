@@ -75,7 +75,31 @@
                         <span class="message-user">{{ message.username }}</span>
                         <span class="message-time">{{ message.timestamp }}</span>
                     </div>
-                    <div class="message-content">{{ message.content }}</div>
+                    <div class="message-content">
+                        {% if message.file_path %}
+                            {% if message.file_type and message.file_type.startswith('image/') %}
+                                <div class="file-message">
+                                    <p class="file-name">{{ message.content }}</p>
+                                    <img src="{{ url_for('static', filename='uploads/' + message.file_path.split('/')[-1]) if message.file_path.startswith('static/') else '/' + message.file_path }}" 
+                                         alt="{{ message.content }}" 
+                                         class="uploaded-image"
+                                         onclick="openImageModal(this.src)">
+                                </div>
+                            {% else %}
+                                <div class="file-message">
+                                    <i class="fas fa-file"></i>
+                                    <a href="{{ url_for('static', filename='uploads/' + message.file_path.split('/')[-1]) if message.file_path.startswith('static/') else '/' + message.file_path }}" 
+                                       target="_blank" 
+                                       class="file-link">
+                                        {{ message.content }}
+                                    </a>
+                                    <span class="file-size">({{ ((message.file_size or 0) / 1024)|round(1) }} KB)</span>
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            {{ message.content }}
+                        {% endif %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -90,7 +114,9 @@
                     </button>
                 </form>
                 <div class="input-actions">
-                    <button class="btn btn-icon" title="Attach file">
+                    <input type="file" id="file-input" style="display: none;" 
+                           accept=".png,.jpg,.jpeg,.gif,.bmp,.webp,.pdf,.txt,.doc,.docx,.zip">
+                    <button class="btn btn-icon" title="Attach file" onclick="document.getElementById('file-input').click()">
                         <i class="fas fa-paperclip"></i>
                     </button>
                     <button class="btn btn-icon" title="Emoji">
@@ -99,6 +125,12 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="image-modal" class="modal" style="display: none;">
+        <span class="close-modal" onclick="closeImageModal()">&times;</span>
+        <img class="modal-content" id="modal-image">
     </div>
 
     <script>
@@ -132,6 +164,54 @@
         
         socket.on('user_status', function(data) {
             updateUserStatus(data.username, data.status);
+        });
+        
+        // File upload handling
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            // Check file size (16MB limit)
+            if (file.size > 16 * 1024 * 1024) {
+                alert('File size must be less than 16MB');
+                e.target.value = '';
+                return;
+            }
+            
+            // Check file extension
+            const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'pdf', 'txt', 'doc', 'docx', 'zip'];
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            if (!allowedExtensions.includes(fileExtension)) {
+                alert('File type not allowed. Allowed: ' + allowedExtensions.join(', '));
+                e.target.value = '';
+                return;
+            }
+            
+            // Create FormData and upload
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('room', currentRoom);
+            
+            // Show upload indicator
+            addSystemMessage(`Uploading ${file.name}...`);
+            
+            fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    addSystemMessage(`Upload failed: ${data.error}`);
+                }
+                // Clear file input
+                e.target.value = '';
+            })
+            .catch(error => {
+                addSystemMessage('Upload failed. Please try again.');
+                console.error('Upload error:', error);
+                e.target.value = '';
+            });
         });
         
         function joinRoom(room) {
@@ -204,12 +284,49 @@
             
             const time = new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             
+            let contentHtml = '';
+            if (data.is_file || data.file_path) {
+                const filePath = data.file_path || '';
+                const fileName = data.file_name || data.content;
+                const fileType = data.file_type || '';
+                const fileSize = data.file_size || 0;
+                
+                // Handle image files
+                if (fileType.startsWith('image/') || fileName.match(/\.(png|jpg|jpeg|gif|bmp|webp)$/i)) {
+                    const imageUrl = filePath.startsWith('/') ? filePath : '/' + filePath;
+                    contentHtml = `
+                        <div class="file-message">
+                            <p class="file-name">${escapeHtml(fileName)}</p>
+                            <img src="${imageUrl}" 
+                                 alt="${escapeHtml(fileName)}" 
+                                 class="uploaded-image"
+                                 onclick="openImageModal('${imageUrl}')">
+                        </div>
+                    `;
+                } else {
+                    // Handle other file types
+                    const fileUrl = filePath.startsWith('/') ? filePath : '/' + filePath;
+                    const fileSizeKB = fileSize ? (fileSize / 1024).toFixed(1) : '0';
+                    contentHtml = `
+                        <div class="file-message">
+                            <i class="fas fa-file"></i>
+                            <a href="${fileUrl}" target="_blank" class="file-link">
+                                ${escapeHtml(fileName)}
+                            </a>
+                            <span class="file-size">(${fileSizeKB} KB)</span>
+                        </div>
+                    `;
+                }
+            } else {
+                contentHtml = `<div class="text-content">${escapeHtml(data.content)}</div>`;
+            }
+            
             messageDiv.innerHTML = `
                 <div class="message-header">
                     <span class="message-user">${data.username}</span>
                     <span class="message-time">${time}</span>
                 </div>
-                <div class="message-content">${escapeHtml(data.content)}</div>
+                <div class="message-content">${contentHtml}</div>
             `;
             
             container.appendChild(messageDiv);
@@ -255,6 +372,27 @@
             div.textContent = text;
             return div.innerHTML;
         }
+        
+        // Image modal functions
+        function openImageModal(src) {
+            const modal = document.getElementById('image-modal');
+            const modalImg = document.getElementById('modal-image');
+            modal.style.display = 'block';
+            modalImg.src = src;
+        }
+        
+        function closeImageModal() {
+            const modal = document.getElementById('image-modal');
+            modal.style.display = 'none';
+        }
+        
+        // Close modal when clicking outside the image
+        window.onclick = function(event) {
+            const modal = document.getElementById('image-modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
         
         // Initialize with general room
         window.onload = function() {
